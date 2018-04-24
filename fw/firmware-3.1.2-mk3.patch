@@ -1,0 +1,128 @@
+diff --git a/Firmware/Configuration.h b/Firmware/Configuration.h
+index 4eb4270..1c1453d 100644
+--- a/Firmware/Configuration.h
++++ b/Firmware/Configuration.h
+@@ -11,7 +11,7 @@
+ #define FW_COMMIT_NR   231
+ // FW_VERSION_UNKNOWN means this is an unofficial build.
+ // The firmware should only be checked into github with this symbol.
+-#define FW_DEV_VERSION FW_VERSION_UNKNOWN
++#define FW_DEV_VERSION FW_VERSION_GOLD
+ #define FW_REPOSITORY "Prusa3D/MK3"
+ #define FW_VERSION_FULL FW_VERSION "-" STR(FW_COMMIT_NR)
+ 
+@@ -420,7 +420,7 @@ const bool Z_MAX_ENDSTOP_INVERTING = true; // set to true to invert the logic of
+ #define DISABLE_INACTIVE_EXTRUDER true //disable only inactive extruders and keep active extruder enabled
+ 
+ #define INVERT_X_DIR true    // for Mendel set to false, for Orca set to true
+-#define INVERT_Y_DIR false    // for Mendel set to true, for Orca set to false
++#define INVERT_Y_DIR true    // for Mendel set to true, for Orca set to false
+ #define INVERT_Z_DIR true     // for Mendel set to false, for Orca set to true
+ #define INVERT_E0_DIR false   // for direct drive extruder v9 set to true, for geared extruder set to false
+ #define INVERT_E1_DIR false    // for direct drive extruder v9 set to true, for geared extruder set to false
+diff --git a/Firmware/Configuration_prusa.h b/Firmware/Configuration_prusa.h
+index 4538b22..0dbeae1 100644
+--- a/Firmware/Configuration_prusa.h
++++ b/Firmware/Configuration_prusa.h
+@@ -50,7 +50,7 @@ const bool Z_MIN_ENDSTOP_INVERTING = false; // set to true to invert the logic o
+ #define X_MIN_POS 0
+ #define Y_MAX_POS 210
+ #define Y_MIN_POS -4 //orig -4
+-#define Z_MAX_POS 210
++#define Z_MAX_POS 220
+ #define Z_MIN_POS 0.15
+ 
+ // Canceled home position
+@@ -74,8 +74,10 @@ const bool Z_MIN_ENDSTOP_INVERTING = false; // set to true to invert the logic o
+ 
+ #define MANUAL_FEEDRATE {2700, 2700, 1000, 100}   // set the speeds for manual moves (mm/min)
+ 
++//#define TMC2130_ACCEL_LIMIT
++#ifdef TMC2130_ACCEL_LIMIT
+ //Silent mode limits
+-#define SILENT_MAX_ACCEL  960 // max axxeleration in silent mode in mm/s^2
++#define SILENT_MAX_ACCEL  1500 // max axxeleration in silent mode in mm/s^2
+ #define SILENT_MAX_ACCEL_ST (100*SILENT_MAX_ACCEL) // max accel in steps/s^2
+ #define SILENT_MAX_FEEDRATE 172  //max feedrate in mm/s, because mode switched to normal for homming , this value limits also homing, it should be greater (172mm/s=9600mm/min>2700mm/min)
+ 
+@@ -85,6 +87,7 @@ const bool Z_MIN_ENDSTOP_INVERTING = false; // set to true to invert the logic o
+ #define NORMAL_MAX_FEEDRATE 200  //max feedrate in mm/s, because mode switched to normal for homming , this value limits also homing, it should be greater (172mm/s=9600mm/min>2700mm/min)
+ 
+ //#define SIMPLE_ACCEL_LIMIT          //new limitation method for normal/silent
++#endif
+ 
+ //number of bytes from end of the file to start check
+ #define END_FILE_SECTION 10000
+@@ -208,8 +211,8 @@ const bool Z_MIN_ENDSTOP_INVERTING = false; // set to true to invert the logic o
+ #define TMC2130_SG_THRS_E       3     // stallguard sensitivity for E axis
+ 
+ //new settings is possible for vsense = 1, running current value > 31 set vsense to zero and shift both currents by 1 bit right (Z axis only)
+-#define TMC2130_CURRENTS_H {16, 20, 28, 36}  // default holding currents for all axes
+-#define TMC2130_CURRENTS_R {16, 20, 28, 36}  // default running currents for all axes
++#define TMC2130_CURRENTS_H {16, 20, 20, 35}  // default holding currents for all axes
++#define TMC2130_CURRENTS_R {16, 20, 20, 35}  // default running currents for all axes
+ #define TMC2130_UNLOAD_CURRENT_R 12			 // lowe current for M600 to protect filament sensor 
+ 
+ //#define TMC2130_DEBUG
+@@ -253,7 +256,7 @@ const bool Z_MIN_ENDSTOP_INVERTING = false; // set to true to invert the logic o
+ #endif
+ 
+ // Extrude mintemp
+-#define EXTRUDE_MINTEMP 190
++#define EXTRUDE_MINTEMP 185
+ 
+ // Extruder cooling fans
+ #define EXTRUDER_0_AUTO_FAN_PIN   8
+diff --git a/Firmware/planner.cpp b/Firmware/planner.cpp
+index b7c22d4..399b45e 100644
+--- a/Firmware/planner.cpp
++++ b/Firmware/planner.cpp
+@@ -951,7 +951,7 @@ Having the real displacement of the head, we can calculate the total movement le
+   for(int i=0; i < 4; i++)
+   {
+     current_speed[i] = delta_mm[i] * inverse_second;
+-#ifdef TMC2130
++#ifdef TMC2130_ACCEL_LIMIT
+ 	float max_fr = max_feedrate[i];
+ 	if (i < 2) // X, Y
+ 	{
+@@ -968,10 +968,10 @@ Having the real displacement of the head, we can calculate the total movement le
+ 	}
+     if(fabs(current_speed[i]) > max_fr)
+       speed_factor = min(speed_factor, max_fr / fabs(current_speed[i]));
+-#else //TMC2130
++#else // !TMC2130_ACCEL_LIMIT
+     if(fabs(current_speed[i]) > max_feedrate[i])
+       speed_factor = min(speed_factor, max_feedrate[i] / fabs(current_speed[i]));
+-#endif //TMC2130
++#endif
+   }
+ 
+   // Correct the speed  
+@@ -996,7 +996,7 @@ Having the real displacement of the head, we can calculate the total movement le
+   else
+   {
+     block->acceleration_st = ceil(acceleration * steps_per_mm); // convert to: acceleration steps/sec^2
+-#ifdef TMC2130
++#ifdef TMC2130_ACCEL_LIMIT
+ #ifdef SIMPLE_ACCEL_LIMIT // in some cases can be acceleration limited inproperly
+ 	if (tmc2130_mode == TMC2130_MODE_SILENT)
+ 	{
+@@ -1032,7 +1032,7 @@ Having the real displacement of the head, we can calculate the total movement le
+     if(((float)block->acceleration_st * (float)block->steps_e / (float)block->step_event_count) > axis_steps_per_sqr_second[E_AXIS])
+       block->acceleration_st = axis_steps_per_sqr_second[E_AXIS];
+ #endif // SIMPLE_ACCEL_LIMIT
+-#else //TMC2130
++#else // !TMC2130_ACCEL_LIMIT
+     // Limit acceleration per axis
+     //FIXME Vojtech: One shall rather limit a projection of the acceleration vector instead of using the limit.
+     if(((float)block->acceleration_st * (float)block->steps_x / (float)block->step_event_count) > axis_steps_per_sqr_second[X_AXIS])
+@@ -1043,7 +1043,7 @@ Having the real displacement of the head, we can calculate the total movement le
+       block->acceleration_st = axis_steps_per_sqr_second[E_AXIS];
+     if(((float)block->acceleration_st * (float)block->steps_z / (float)block->step_event_count ) > axis_steps_per_sqr_second[Z_AXIS])
+       block->acceleration_st = axis_steps_per_sqr_second[Z_AXIS];
+-#endif //TMC2130
++#endif
+   }
+   // Acceleration of the segment, in mm/sec^2
+   block->acceleration = block->acceleration_st / steps_per_mm;
